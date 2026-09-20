@@ -7,6 +7,7 @@ struct SkyPlateApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView(store: store)
+                .environment(\.locale, Locale(identifier: store.language))
                 .preferredColorScheme(.dark)
                 .onAppear { store.start() }
                 .onChange(of: phase) { _, phase in

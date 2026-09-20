@@ -41,7 +41,7 @@ final class LocationTests: XCTestCase {
         provider.receive(NSError(domain: kCLErrorDomain, code: CLError.locationUnknown.rawValue))
         XCTAssertNotNil(provider.currentLocation)
         XCTAssertEqual(manager.stops, 0)
-        XCTAssertEqual(provider.permission, "使用期间允许")
+        XCTAssertEqual(provider.permission, L("使用期间允许", "While using the app"))
         XCTAssertFalse(provider.message.contains("权限"))
     }
 

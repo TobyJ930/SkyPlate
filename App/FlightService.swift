@@ -4,9 +4,9 @@ enum FlightServiceError: LocalizedError {
     case http(Int), invalidResponse, limited
     var errorDescription: String? {
         switch self {
-        case .http(let code): return "数据服务暂时不可用（HTTP \(code)）"
-        case .invalidResponse: return "航班数据格式有变化，请稍后重试"
-        case .limited: return "数据源限流，已暂缓请求，请稍后重试"
+        case .http(let code): return L("数据服务暂时不可用（HTTP \(code)）", "Data service unavailable (HTTP \(code))")
+        case .invalidResponse: return L("航班数据格式有变化，请稍后重试", "Unexpected flight data format. Please try again later.")
+        case .limited: return L("数据源限流，已暂缓请求，请稍后重试", "Rate limited. Requests paused; please try again later.")
         }
     }
 }

@@ -30,13 +30,18 @@ struct FlightSnapshot: Codable, Hashable {
     var expiresAt: Date
     var demo = false
     var unavailable = false
+    // Optional new keys remain decodable for existing Live Activity payloads.
+    var airline: Airline? = nil
+    var squawk: String? = nil
+    var language: String? = nil
 
     static var preview: FlightSnapshot {
         FlightSnapshot(hex: "DEMO", number: "NZ123", callsign: "ANZ123",
             origin: "AKL", destination: "SYD", originName: "Auckland", destinationName: "Sydney",
             altitude: "12,000 ft", speed: "280 kt", elapsed: "N/A", arrival: "N/A",
-            distance: "8.4 km", registration: "示例", aircraftType: "A320",
-            observedAt: Date(), expiresAt: Date().addingTimeInterval(90), demo: true)
+            distance: "8.4 km", registration: "DEMO", aircraftType: "A320",
+            observedAt: Date(), expiresAt: Date().addingTimeInterval(90), demo: true,
+            airline: Airline(name: "Demo Airlines", icao: "DEMO", iata: "DM"), squawk: "0042", language: AppLanguage.current)
     }
 }
 
@@ -62,6 +67,7 @@ struct Aircraft: Decodable {
     var lat: Double?
     var lon: Double?
     var seen_pos: Double?
+    var squawk: Squawk?
 }
 
 struct AircraftResponse: Decodable {
@@ -90,6 +96,39 @@ struct FlightRoute: Decodable {
     var callsign_iata: String?
     var origin: Airport?
     var destination: Airport?
+    var airline: Airline?
+}
+
+struct Airline: Codable, Hashable {
+    var name: String?
+    var icao: String?
+    var iata: String?
+    func displayName(language: String? = nil) -> String {
+        let chinese = ["ANZ": "新西兰航空", "QFA": "澳洲航空", "JST": "捷星航空",
+                       "CCA": "中国国际航空", "CES": "中国东方航空", "CSN": "中国南方航空",
+                       "CPA": "国泰航空", "SIA": "新加坡航空", "UAE": "阿联酋航空",
+                       "QTR": "卡塔尔航空", "DEMO": "演示航空"]
+        if (language ?? AppLanguage.current) != "en", let code = icao,
+           let translated = chinese[code] { return translated }
+        return FlightText.value(name)
+    }
+    var badge: String {
+        let code = FlightText.value(iata)
+        return code == "N/A" ? FlightText.value(icao) : code
+    }
+}
+
+struct Squawk: Decodable, Equatable {
+    let code: String
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let raw: String
+        if let string = try? container.decode(String.self) { raw = string.trimmingCharacters(in: .whitespaces) }
+        else if let number = try? container.decode(Int.self), (0...7777).contains(number) {
+            raw = String(format: "%04d", number)
+        } else { raw = "" }
+        code = raw.count == 4 && raw.allSatisfy({ "01234567".contains($0) }) ? raw : "N/A"
+    }
 }
 
 struct RouteResponse: Decodable {

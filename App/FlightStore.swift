@@ -5,7 +5,7 @@ import ActivityKit
 @MainActor
 final class FlightStore: ObservableObject {
     @Published var flight: FlightSnapshot?
-    @Published var status = "正在准备"
+    @Published var status = L("正在准备", "Getting ready")
     @Published var busy = false
     @Published var activityMessage: String?
     @Published var activityEnabled = false
@@ -13,6 +13,14 @@ final class FlightStore: ObservableObject {
     @Published var radius = 100
     @Published var interval = 15
     @Published var metric = false
+    @Published var language = AppLanguage.current
+    @Published var showPhotos = (UserDefaults.standard.object(forKey: "SkyPlate.showPhotos") as? Bool) ?? true
+    @Published var photo: AircraftPhoto?
+    @Published var photoLoading = false
+    private let photoService = PhotoService()
+    private var photoTask: Task<Void, Never>?
+    private var photoHex: String?
+    private var photoFetchedAt = Date.distantPast
     let location = LocationProvider()
     private let service = FlightService()
     private var polling: Task<Void, Never>?
@@ -46,30 +54,74 @@ final class FlightStore: ObservableObject {
         generation += 1
         polling?.cancel(); polling = nil
         routeTask?.cancel(); routeTask = nil
+        photoTask?.cancel(); photoTask = nil
+        photoLoading = false
+        photoHex = nil
         location.stop()
     }
 
     func settingsChanged() {
         generation += 1
         routeTask?.cancel()
+        clearPhoto()
         if demo {
             location.stop()
             flight = .preview
-            status = "演示数据 · 非真实航班"
+            status = L("演示数据 · 非真实航班", "Demo data · Not a real flight")
         } else {
             flight = nil
-            status = "正在查找附近航班…"
+            status = L("正在查找附近航班…", "Finding nearby aircraft…")
             if active { location.start() }
         }
         nextFetch = .distantPast
         Task { await endActivity(); if active { await refresh() } }
     }
 
+    func languageChanged() {
+        UserDefaults.standard.set(language, forKey: AppLanguage.preferenceKey)
+        location.refreshLanguage()
+        activityMessage = nil
+        flight?.language = language
+        status = demo ? L("演示数据 · 非真实航班", "Demo data · Not a real flight")
+            : L("正在查找附近航班…", "Finding nearby aircraft…")
+        nextFetch = .distantPast
+        Task { await syncActivity(); await refresh() }
+    }
+
+    func photosChanged() {
+        UserDefaults.standard.set(showPhotos, forKey: "SkyPlate.showPhotos")
+        clearPhoto()
+        if let flight, !demo { loadPhoto(hex: flight.hex) }
+    }
+
+    private func clearPhoto() {
+        photoTask?.cancel(); photoTask = nil
+        photoHex = nil; photo = nil; photoLoading = false
+    }
+
+    private func loadPhoto(hex: String) {
+        guard showPhotos, !demo, active else { return }
+        if photoHex == hex && (photoLoading || Date().timeIntervalSince(photoFetchedAt) < 300) { return }
+        clearPhoto()
+        photoHex = hex
+        photoLoading = true
+        let requestGeneration = generation
+        photoTask = Task {
+            let result = await photoService.photo(hex: hex)
+            guard !Task.isCancelled, requestGeneration == generation,
+                  flight?.hex == hex, showPhotos, !demo, active else { return }
+            photo = result
+            photoFetchedAt = Date()
+            photoLoading = false
+            photoTask = nil
+        }
+    }
+
     func refresh() async {
         guard active, !busy else { return }
         if demo {
             if flight?.demo != true { flight = .preview }
-            status = "演示数据 · 非真实航班"
+            status = L("演示数据 · 非真实航班", "Demo data · Not a real flight")
             return
         }
         location.renewIfNeeded()
@@ -90,8 +142,9 @@ final class FlightStore: ObservableObject {
             guard let nearest = NearestFlight.select(response, latitude: point.coordinate.latitude,
                 longitude: point.coordinate.longitude, radiusNM: Double(radius)) else {
                 routeTask?.cancel()
+                clearPhoto()
                 flight = nil
-                status = "范围内暂无新鲜的空中飞机数据，可扩大搜索范围"
+                status = L("范围内暂无新鲜的空中飞机数据，可扩大搜索范围", "No fresh airborne aircraft data in range. Try increasing the search radius.")
                 await endActivity()
                 return
             }
@@ -108,8 +161,10 @@ final class FlightStore: ObservableObject {
                 speed: FlightText.number(a.gs.flatMap { $0 >= 0 ? (metric ? $0 * 1.852 : $0) : nil }, unit: metric ? "km/h" : "kt"),
                 elapsed: "N/A", arrival: "N/A", distance: String(format: "%.1f km", nearest.distanceKM),
                 registration: FlightText.value(a.r), aircraftType: FlightText.value(a.t),
-                observedAt: nearest.observedAt, expiresAt: nearest.observedAt.addingTimeInterval(60))
-            status = "自动追踪最近飞机 · 每 \(interval) 秒刷新"
+                observedAt: nearest.observedAt, expiresAt: nearest.observedAt.addingTimeInterval(60),
+                airline: same ? previous?.airline : nil, squawk: a.squawk?.code ?? "N/A", language: language)
+            loadPhoto(hex: a.hex)
+            status = L("自动追踪最近飞机 · 每 \(interval) 秒刷新", "Nearest aircraft · Refreshes every \(interval)s")
             await syncActivity()
             routeTask?.cancel()
             routeTask = Task {
@@ -121,11 +176,12 @@ final class FlightStore: ObservableObject {
                 flight?.destination = route?.destination?.label ?? "N/A"
                 flight?.originName = route?.origin?.detail ?? "N/A"
                 flight?.destinationName = route?.destination?.detail ?? "N/A"
+                flight?.airline = route?.airline
                 await syncActivity()
             }
         } catch {
             guard active, !Task.isCancelled, requestGeneration == generation else { return }
-            status = "\(error.localizedDescription) · 将自动重试"
+            status = L("\(error.localizedDescription) · 将自动重试", "\(error.localizedDescription) · Retrying automatically")
             nextFetch = Date().addingTimeInterval(error is FlightServiceError ? 60 : 30)
             await markUnavailable()
         }
@@ -140,16 +196,16 @@ final class FlightStore: ObservableObject {
     func toggleActivity() async {
         if activity != nil { await endActivity(); return }
         guard let flight, !flight.unavailable, flight.expiresAt > Date() else {
-            activityMessage = "请先等待有效航班数据"; return
+            activityMessage = L("请先等待有效航班数据", "Please wait for fresh flight data"); return
         }
         guard ActivityAuthorizationInfo().areActivitiesEnabled else {
-            activityMessage = "请在 iPhone 设置中为 SkyPlate 开启实时活动"; return
+            activityMessage = L("请在 iPhone 设置中为 SkyPlate 开启实时活动", "Enable Live Activities for SkyPlate in iPhone Settings"); return
         }
         do {
-            activity = try Activity.request(attributes: FlightAttributes(title: "最近航班"),
+            activity = try Activity.request(attributes: FlightAttributes(title: L("最近航班", "Nearest flight")),
                 content: ActivityContent(state: flight, staleDate: flight.expiresAt), pushType: nil)
             activityEnabled = true
-            activityMessage = "已开启。锁屏后显示最近一次数据，过期会提示返回 App 刷新。"
+            activityMessage = L("已开启。锁屏后显示最近一次数据，过期会提示返回 App 刷新。", "Enabled. The Lock Screen shows the last update and prompts you to reopen the app when stale.")
         } catch { activityMessage = error.localizedDescription }
     }
 

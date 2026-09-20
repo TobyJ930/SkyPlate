@@ -14,7 +14,7 @@ fi
 if [[ ! "$SKYPLATE_BUNDLE_ID" =~ ^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$ ]] || [[ "$SKYPLATE_BUNDLE_ID" == com.example.* ]]; then
   echo '请使用你自己的、与 App Store Connect 一致的 Bundle ID。' >&2; exit 1
 fi
-skyplate_build="${SKYPLATE_BUILD_NUMBER:-2}"
+skyplate_build="${SKYPLATE_BUILD_NUMBER:-3}"
 if [[ ! "$skyplate_build" =~ ^[1-9][0-9]{0,3}$ ]]; then
   echo 'Build number 必须是 1–9999 的整数，且高于之前上传的版本。' >&2; exit 1
 fi

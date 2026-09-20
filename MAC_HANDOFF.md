@@ -1,6 +1,6 @@
 # 在 Mac 上继续：定位验证与 TestFlight
 
-这是一份源码工程，版本 1.0.1 / build 2。云端没有 Mac 访问通道、Xcode 或签名凭据：**尚未生成 .xcarchive / .ipa，也没有上传 TestFlight**。不要把 ZIP 当成可直接上传的 IPA。
+这是一份源码工程，版本 1.1.0 / build 3。云端没有 Mac 访问通道、Xcode 或签名凭据：**尚未生成 .xcarchive / .ipa，也没有上传 TestFlight**。不要把 ZIP 当成可直接上传的 IPA。
 
 ## 已做的定位修复
 
@@ -16,7 +16,7 @@
 
 1. 使用本次下载解压的工程，先检查所在目录及用户已有改动。若合并到原工程，保留用户配置的 Team 和 Bundle ID；不要直接覆盖其签名配置。
 2. 检查本地 AGENTS.md（如有）、`xcodebuild -version`、可用 iPhone 模拟器和连接的真机。使用本地可用能力，不假定具有桌面鼠标控制。
-3. 运行 `bash Scripts/check-on-mac.sh`，修复实际编译错误。然后选定真实存在的模拟器目的地，执行 `xcodebuild test` 或 Xcode Command + U。12 个 XCTest 包含新增的 5 个定位回归测试。
+3. 运行 `bash Scripts/check-on-mac.sh`，修复实际编译错误。然后选定真实存在的模拟器目的地，执行 `xcodebuild test` 或 Xcode Command + U。16 个 XCTest 包含新增的 5 个定位回归测试。
 4. 确认用户是在真机还是模拟器遇到问题。模拟器需要设置位置：模拟器菜单 Features → Location → Custom Location，输入 `-36.8485, 174.7633`。也可在 Xcode 的 Debug → Simulate Location 选择项目里的 GPX；不要把模拟定位当作真机 GPS 已修复。
 5. 真机检查系统定位总开关、App 的“使用期间允许”及诊断错误码。连接调试时先排除 Xcode 的模拟定位覆盖（Debug → Simulate Location → Don't Simulate Location）。验证首次授权、暂时定位失败、拒绝后恢复、切回前台、静止超过两分钟。需要截图或设备日志时，只索取相关内容。
 6. 先完成真机定位验收，再归档。确认用户有有效 Apple Developer Program 会员、正确 Team 和 App Store Connect App 记录。只看到 Xcode 已登录不等于具备分发权限。
@@ -32,7 +32,7 @@
 ```bash
 SKYPLATE_TEAM_ID=ABCDEFGHIJ \
 SKYPLATE_BUNDLE_ID=com.yourname.skyplate \
-SKYPLATE_BUILD_NUMBER=2 \
+SKYPLATE_BUILD_NUMBER=3 \
 bash Scripts/archive-testflight.sh
 ```
 
@@ -55,3 +55,9 @@ bash Scripts/archive-testflight.sh
 - 上传构建：https://developer.apple.com/help/app-store-connect/manage-builds/upload-builds/
 - TestFlight：https://developer.apple.com/testflight/
 - 会员与 Personal Team：https://developer.apple.com/help/account/basics/about-your-developer-account
+
+## 本次新增功能验收
+
+在设置切换中文 / English 并重启 App，检查选择保留。开启 Live Activity 后切换语言，确认锁屏与展开灵动岛同步语言、航空公司和 Squawk。机场专名不强制翻译。检查 0042 的前导零、N/A 回退、照片失败占位、切换飞机时不残留上一架照片、关闭照片开关后停止照片请求。演示航班的名称和代码是虚构示例，不显示真实照片。
+
+语言和照片开关使用本机 UserDefaults 持久保存。已在 App 与 Widget 资源中加入 PrivacyInfo.xcprivacy，声明 CA92.1 的本 App 偏好设置用途。归档时检查隐私报告和资源打包。
